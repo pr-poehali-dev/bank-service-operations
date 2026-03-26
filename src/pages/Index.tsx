@@ -969,82 +969,222 @@ const Credit = () => {
 };
 
 // ─── Queue ────────────────────────────────────────────────────────────────────
-const Queue = () => (
-  <div className="space-y-5 animate-fade-in">
-    <div className="flex items-center justify-between">
-      <h2 className="text-xl font-semibold text-white">Электронная очередь</h2>
-      <button className="btn-primary flex items-center gap-2 text-sm">
-        <Icon name="Plus" size={14} />
-        Взять следующего
-      </button>
-    </div>
+type QueueItem = { ticket: string; name: string; service: string; wait: string; status: string };
 
-    <div className="grid grid-cols-3 gap-4">
-      {[
-        { label: "В очереди", value: MOCK_QUEUE.length, icon: "Users" },
-        { label: "Обслужено сегодня", value: 42, icon: "CheckCircle2" },
-        { label: "Среднее ожидание", value: "12 мин", icon: "Clock" },
-      ].map(s => (
-        <div key={s.label} className="bank-card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "hsl(185 100% 50% / 0.1)" }}>
-            <Icon name={s.icon as any} size={18} className="text-cyan-400" />
-          </div>
-          <div>
-            <div className="stat-value text-xl">{s.value}</div>
-            <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{s.label}</div>
-          </div>
-        </div>
-      ))}
-    </div>
+const SERVICE_OPS: Record<string, { label: string; icon: string; desc: string; color: string }[]> = {
+  "Выдача наличных": [
+    { label: "Выдать наличные", icon: "ArrowUpFromLine", desc: "Выдача запрошенной суммы клиенту", color: "hsl(38 92% 50%)" },
+    { label: "Проверить остаток", icon: "Eye", desc: "Проверка баланса перед выдачей", color: "hsl(185 100% 50%)" },
+    { label: "Распечатать чек", icon: "Printer", desc: "Квитанция о выдаче наличных", color: "hsl(215 20% 55%)" },
+  ],
+  "Взнос наличных": [
+    { label: "Принять наличные", icon: "ArrowDownToLine", desc: "Зачислить сумму на счёт клиента", color: "hsl(142 70% 45%)" },
+    { label: "Пересчитать купюры", icon: "Calculator", desc: "Проверка и пересчёт принимаемой суммы", color: "hsl(185 100% 50%)" },
+    { label: "Распечатать чек", icon: "Printer", desc: "Квитанция о взносе наличных", color: "hsl(215 20% 55%)" },
+  ],
+  "Открытие счёта": [
+    { label: "Открыть счёт", icon: "BookOpen", desc: "Создать новый счёт для клиента", color: "hsl(185 100% 50%)" },
+    { label: "Копия документов", icon: "Copy", desc: "Снять копию паспорта и ИНН", color: "hsl(215 20% 55%)" },
+    { label: "Выдать карту", icon: "CreditCard", desc: "Привязать дебетовую карту к счёту", color: "hsl(142 70% 45%)" },
+  ],
+  "Кредит / Рассрочка": [
+    { label: "Оформить кредит", icon: "FileText", desc: "Заполнить и отправить заявку", color: "hsl(0 84% 60%)" },
+    { label: "Рассчитать платёж", icon: "Calculator", desc: "Расчёт ежемесячного взноса", color: "hsl(185 100% 50%)" },
+    { label: "Проверить историю", icon: "History", desc: "Кредитная история клиента", color: "hsl(215 20% 55%)" },
+  ],
+  "Корпоративный счёт": [
+    { label: "Открыть р/с", icon: "Building2", desc: "Расчётный счёт для юридического лица", color: "hsl(185 100% 50%)" },
+    { label: "Документы ЮЛ", icon: "Folder", desc: "Проверка учредительных документов", color: "hsl(215 20% 55%)" },
+    { label: "Интернет-банк", icon: "Globe", desc: "Подключить корпоративный онлайн-банкинг", color: "hsl(142 70% 45%)" },
+  ],
+  "Консультация": [
+    { label: "Продукты банка", icon: "LayoutGrid", desc: "Рассказать о доступных продуктах", color: "hsl(185 100% 50%)" },
+    { label: "Тарифы и условия", icon: "Info", desc: "Разъяснить тарифы и условия обслуживания", color: "hsl(215 20% 55%)" },
+    { label: "Завершить консультацию", icon: "CheckCircle2", desc: "Клиент проконсультирован", color: "hsl(142 70% 45%)" },
+  ],
+};
 
-    <div className="grid grid-cols-2 gap-4">
-      <div className="bank-card">
-        <div className="section-title mb-4">Очередь</div>
-        <div className="space-y-2">
-          {MOCK_QUEUE.map(q => (
-            <div key={q.ticket} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: q.status === "current" ? "hsl(185 100% 50% / 0.08)" : "hsl(220 15% 8%)", border: q.status === "current" ? "1px solid hsl(185 100% 50% / 0.25)" : "1px solid hsl(220 15% 14%)" }}>
-              <div className="font-mono text-sm font-bold w-12" style={{ color: q.status === "current" ? "hsl(185 100% 50%)" : "hsl(215 20% 50%)" }}>{q.ticket}</div>
-              <div className="flex-1">
-                <div className="text-sm font-medium text-white">{q.name}</div>
-                <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{q.service}</div>
+const Queue = () => {
+  const [queue, setQueue] = useState<QueueItem[]>([
+    { ticket: "А-001", name: "Петров Михаил", service: "Выдача наличных", wait: "3 мин", status: "current" },
+    { ticket: "А-002", name: "Кузнецова Анна", service: "Взнос наличных", wait: "8 мин", status: "waiting" },
+    { ticket: "А-003", name: "Орлов Денис", service: "Открытие счёта", wait: "14 мин", status: "waiting" },
+    { ticket: "Б-001", name: "ООО «Альфа»", service: "Корпоративный счёт", wait: "20 мин", status: "waiting" },
+    { ticket: "А-004", name: "Соловьёва Ирина", service: "Кредит / Рассрочка", wait: "25 мин", status: "waiting" },
+  ]);
+  const [served, setServed] = useState(42);
+  const [active, setActive] = useState<QueueItem | null>(null);
+  const [doneOps, setDoneOps] = useState<string[]>([]);
+  const [newName, setNewName] = useState("");
+  const [newService, setNewService] = useState("Выдача наличных");
+  const [ticketCounter, setTicketCounter] = useState(5);
+
+  const handleTakeNext = () => {
+    const waiting = queue.filter(q => q.status === "waiting");
+    if (waiting.length === 0) return;
+    const next = waiting[0];
+    setActive(next);
+    setDoneOps([]);
+    setQueue(prev => prev.filter(q => q.ticket !== next.ticket).map((q, i) => ({ ...q, wait: `${(i + 1) * 5} мин` })));
+  };
+
+  const handleComplete = () => {
+    setServed(s => s + 1);
+    setActive(null);
+    setDoneOps([]);
+  };
+
+  const handleAddTicket = () => {
+    if (!newName.trim()) return;
+    const letter = newService === "Корпоративный счёт" ? "Б" : "А";
+    const ticket = `${letter}-${String(ticketCounter + 1).padStart(3, "0")}`;
+    setQueue(prev => [...prev, { ticket, name: newName.trim(), service: newService, wait: `${(prev.length + 1) * 5} мин`, status: "waiting" }]);
+    setTicketCounter(c => c + 1);
+    setNewName("");
+  };
+
+  const ops = active ? (SERVICE_OPS[active.service] || SERVICE_OPS["Консультация"]) : [];
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      <div className="flex items-center justify-between">
+        <h2 className="text-xl font-semibold text-white">Электронная очередь</h2>
+        <button className="btn-primary flex items-center gap-2 text-sm" onClick={handleTakeNext} disabled={queue.filter(q => q.status === "waiting").length === 0}>
+          <Icon name="UserCheck" size={14} />
+          Взять следующего
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "В очереди", value: queue.length, icon: "Users" },
+          { label: "Обслужено сегодня", value: served, icon: "CheckCircle2" },
+          { label: "Среднее ожидание", value: queue.length ? `${queue.length * 5} мин` : "—", icon: "Clock" },
+        ].map(s => (
+          <div key={s.label} className="bank-card flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "hsl(185 100% 50% / 0.1)" }}>
+              <Icon name={s.icon as any} size={18} className="text-cyan-400" />
+            </div>
+            <div>
+              <div className="stat-value text-xl">{s.value}</div>
+              <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Панель обслуживания */}
+      {active && (
+        <div className="bank-card animate-fade-in" style={{ border: "1px solid hsl(185 100% 50% / 0.3)" }}>
+          <div className="flex items-start justify-between mb-5">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "hsl(185 100% 50% / 0.12)", border: "1px solid hsl(185 100% 50% / 0.25)" }}>
+                <span className="font-mono text-sm font-bold" style={{ color: "hsl(185 100% 50%)" }}>{active.ticket}</span>
               </div>
-              <div className="flex items-center gap-2">
-                {q.status === "current"
-                  ? <><div className="pulse-dot" /><span className="text-xs" style={{ color: "hsl(185 100% 50%)" }}>Сейчас</span></>
-                  : <span className="text-xs" style={{ color: "hsl(215 20% 40%)" }}>{q.wait}</span>}
+              <div>
+                <div className="text-base font-semibold text-white">{active.name}</div>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <div className="pulse-dot" />
+                  <span className="text-xs" style={{ color: "hsl(185 100% 60%)" }}>На обслуживании</span>
+                  <span className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>·</span>
+                  <span className="badge-cyan">{active.service}</span>
+                </div>
               </div>
             </div>
-          ))}
-        </div>
-      </div>
+            <button className="btn-outline text-xs flex items-center gap-1.5" onClick={handleComplete}>
+              <Icon name="CheckCircle2" size={13} />
+              Завершить
+            </button>
+          </div>
 
-      <div className="bank-card">
-        <div className="section-title mb-4">Регистрация в очереди</div>
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-medium block mb-1.5" style={{ color: "hsl(215 20% 55%)" }}>Имя клиента</label>
-            <input className="input-bank" placeholder="Фамилия Имя Отчество" />
+          <div className="section-title mb-3">Рекомендуемые операции</div>
+          <div className="grid grid-cols-3 gap-3">
+            {ops.map(op => {
+              const isDone = doneOps.includes(op.label);
+              return (
+                <button key={op.label}
+                  onClick={() => setDoneOps(d => d.includes(op.label) ? d.filter(x => x !== op.label) : [...d, op.label])}
+                  className="p-4 rounded-xl text-left transition-all duration-200 relative overflow-hidden"
+                  style={{ background: isDone ? `${op.color}14` : "hsl(220 15% 9%)", border: `1px solid ${isDone ? op.color + "50" : "hsl(220 15% 16%)"}` }}>
+                  {isDone && (
+                    <div className="absolute top-2 right-2">
+                      <Icon name="CheckCircle2" size={14} className="text-green-400" />
+                    </div>
+                  )}
+                  <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3" style={{ background: `${op.color}18` }}>
+                    <Icon name={op.icon as any} size={16} style={{ color: op.color }} />
+                  </div>
+                  <div className="text-sm font-medium text-white mb-1">{op.label}</div>
+                  <div className="text-xs leading-relaxed" style={{ color: "hsl(215 20% 48%)" }}>{op.desc}</div>
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <label className="text-xs font-medium block mb-1.5" style={{ color: "hsl(215 20% 55%)" }}>Тип услуги</label>
-            <select className="input-bank">
-              <option>Выдача наличных</option>
-              <option>Взнос наличных</option>
-              <option>Открытие счёта</option>
-              <option>Кредит / Рассрочка</option>
-              <option>Корпоративный счёт</option>
-              <option>Консультация</option>
-            </select>
+
+          {doneOps.length > 0 && (
+            <div className="mt-4 flex items-center justify-between p-3 rounded-lg" style={{ background: "hsl(142 70% 45% / 0.07)", border: "1px solid hsl(142 70% 45% / 0.2)" }}>
+              <div className="flex items-center gap-2 text-xs" style={{ color: "hsl(142 70% 55%)" }}>
+                <Icon name="CheckCircle2" size={13} />
+                <span>Выполнено: {doneOps.join(", ")}</span>
+              </div>
+              <button className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5" onClick={handleComplete}>
+                <Icon name="UserCheck" size={12} />
+                Завершить приём
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="bank-card">
+          <div className="section-title mb-4">Очередь</div>
+          {queue.length === 0 ? (
+            <div className="py-8 text-center text-sm" style={{ color: "hsl(215 20% 40%)" }}>Очередь пуста</div>
+          ) : (
+            <div className="space-y-2">
+              {queue.map((q, i) => (
+                <div key={q.ticket} className="flex items-center gap-3 p-3 rounded-lg" style={{ background: i === 0 ? "hsl(185 100% 50% / 0.05)" : "hsl(220 15% 8%)", border: i === 0 ? "1px solid hsl(185 100% 50% / 0.15)" : "1px solid hsl(220 15% 14%)" }}>
+                  <div className="font-mono text-sm font-bold w-12" style={{ color: i === 0 ? "hsl(185 100% 50%)" : "hsl(215 20% 50%)" }}>{q.ticket}</div>
+                  <div className="flex-1">
+                    <div className="text-sm font-medium text-white">{q.name}</div>
+                    <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{q.service}</div>
+                  </div>
+                  <span className="text-xs" style={{ color: "hsl(215 20% 40%)" }}>{q.wait}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="bank-card">
+          <div className="section-title mb-4">Регистрация в очереди</div>
+          <div className="space-y-4">
+            <div>
+              <label className="text-xs font-medium block mb-1.5" style={{ color: "hsl(215 20% 55%)" }}>Имя клиента</label>
+              <input className="input-bank" placeholder="Фамилия Имя Отчество" value={newName} onChange={e => setNewName(e.target.value)} />
+            </div>
+            <div>
+              <label className="text-xs font-medium block mb-1.5" style={{ color: "hsl(215 20% 55%)" }}>Тип услуги</label>
+              <select className="input-bank" value={newService} onChange={e => setNewService(e.target.value)}>
+                <option>Выдача наличных</option>
+                <option>Взнос наличных</option>
+                <option>Открытие счёта</option>
+                <option>Кредит / Рассрочка</option>
+                <option>Корпоративный счёт</option>
+                <option>Консультация</option>
+              </select>
+            </div>
+            <button className="btn-primary w-full flex items-center justify-center gap-2" onClick={handleAddTicket} disabled={!newName.trim()}>
+              <Icon name="TicketPlus" size={14} />
+              Выдать талон
+            </button>
           </div>
-          <button className="btn-primary w-full flex items-center justify-center gap-2">
-            <Icon name="TicketPlus" size={14} />
-            Выдать талон
-          </button>
         </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Terminal ─────────────────────────────────────────────────────────────────
 const Terminal = () => {
