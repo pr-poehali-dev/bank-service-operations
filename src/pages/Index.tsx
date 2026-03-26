@@ -970,32 +970,33 @@ const Credit = () => {
 
 // ─── Queue ────────────────────────────────────────────────────────────────────
 type QueueItem = { ticket: string; name: string; service: string; wait: string; status: string };
+type OpModal = "cash" | "card" | "credit" | "new-account" | null;
 
-const SERVICE_OPS: Record<string, { label: string; icon: string; desc: string; color: string }[]> = {
+const SERVICE_OPS: Record<string, { label: string; icon: string; desc: string; color: string; modal?: OpModal }[]> = {
   "Выдача наличных": [
-    { label: "Выдать наличные", icon: "ArrowUpFromLine", desc: "Выдача запрошенной суммы клиенту", color: "hsl(38 92% 50%)" },
+    { label: "Выдать наличные", icon: "ArrowUpFromLine", desc: "Выдача запрошенной суммы клиенту", color: "hsl(38 92% 50%)", modal: "cash" },
     { label: "Проверить остаток", icon: "Eye", desc: "Проверка баланса перед выдачей", color: "hsl(185 100% 50%)" },
     { label: "Распечатать чек", icon: "Printer", desc: "Квитанция о выдаче наличных", color: "hsl(215 20% 55%)" },
   ],
   "Взнос наличных": [
-    { label: "Принять наличные", icon: "ArrowDownToLine", desc: "Зачислить сумму на счёт клиента", color: "hsl(142 70% 45%)" },
+    { label: "Принять наличные", icon: "ArrowDownToLine", desc: "Зачислить сумму на счёт клиента", color: "hsl(142 70% 45%)", modal: "cash" },
     { label: "Пересчитать купюры", icon: "Calculator", desc: "Проверка и пересчёт принимаемой суммы", color: "hsl(185 100% 50%)" },
     { label: "Распечатать чек", icon: "Printer", desc: "Квитанция о взносе наличных", color: "hsl(215 20% 55%)" },
   ],
   "Открытие счёта": [
-    { label: "Открыть счёт", icon: "BookOpen", desc: "Создать новый счёт для клиента", color: "hsl(185 100% 50%)" },
+    { label: "Открыть счёт", icon: "BookOpen", desc: "Создать новый счёт для клиента", color: "hsl(185 100% 50%)", modal: "new-account" },
+    { label: "Выдать карту", icon: "CreditCard", desc: "Привязать дебетовую карту к счёту", color: "hsl(142 70% 45%)", modal: "card" },
     { label: "Копия документов", icon: "Copy", desc: "Снять копию паспорта и ИНН", color: "hsl(215 20% 55%)" },
-    { label: "Выдать карту", icon: "CreditCard", desc: "Привязать дебетовую карту к счёту", color: "hsl(142 70% 45%)" },
   ],
   "Кредит / Рассрочка": [
-    { label: "Оформить кредит", icon: "FileText", desc: "Заполнить и отправить заявку", color: "hsl(0 84% 60%)" },
+    { label: "Оформить кредит", icon: "FileText", desc: "Заполнить и отправить заявку", color: "hsl(0 84% 60%)", modal: "credit" },
     { label: "Рассчитать платёж", icon: "Calculator", desc: "Расчёт ежемесячного взноса", color: "hsl(185 100% 50%)" },
     { label: "Проверить историю", icon: "History", desc: "Кредитная история клиента", color: "hsl(215 20% 55%)" },
   ],
   "Корпоративный счёт": [
-    { label: "Открыть р/с", icon: "Building2", desc: "Расчётный счёт для юридического лица", color: "hsl(185 100% 50%)" },
+    { label: "Открыть р/с", icon: "Building2", desc: "Расчётный счёт для юридического лица", color: "hsl(185 100% 50%)", modal: "new-account" },
+    { label: "Выдать карту", icon: "CreditCard", desc: "Корпоративная карта", color: "hsl(142 70% 45%)", modal: "card" },
     { label: "Документы ЮЛ", icon: "Folder", desc: "Проверка учредительных документов", color: "hsl(215 20% 55%)" },
-    { label: "Интернет-банк", icon: "Globe", desc: "Подключить корпоративный онлайн-банкинг", color: "hsl(142 70% 45%)" },
   ],
   "Консультация": [
     { label: "Продукты банка", icon: "LayoutGrid", desc: "Рассказать о доступных продуктах", color: "hsl(185 100% 50%)" },
@@ -1004,7 +1005,7 @@ const SERVICE_OPS: Record<string, { label: string; icon: string; desc: string; c
   ],
 };
 
-const Queue = () => {
+const Queue = ({ accounts, onAddAccount }: { accounts: Account[]; onAddAccount: (a: Account) => void }) => {
   const [queue, setQueue] = useState<QueueItem[]>([
     { ticket: "А-001", name: "Петров Михаил", service: "Выдача наличных", wait: "3 мин", status: "current" },
     { ticket: "А-002", name: "Кузнецова Анна", service: "Взнос наличных", wait: "8 мин", status: "waiting" },
@@ -1018,6 +1019,57 @@ const Queue = () => {
   const [newName, setNewName] = useState("");
   const [newService, setNewService] = useState("Выдача наличных");
   const [ticketCounter, setTicketCounter] = useState(5);
+
+  // Модальные окна операций
+  const [opModal, setOpModal] = useState<OpModal>(null);
+  const [opDone, setOpDone] = useState(false);
+  const [pendingModal, setPendingModal] = useState<OpModal>(null); // модал ожидающий после создания счёта
+
+  // Формы
+  const [cashForm, setCashForm] = useState({ amount: "", account: "" });
+  const [cardForm, setCardForm] = useState({ fio: "", passport: "", phone: "", cardNum: "", expiry: "" });
+  const [creditForm, setCreditForm] = useState({ fio: "", passport: "", account: "", months: "12" });
+  const [accForm, setAccForm] = useState({ owner: "", type: "Текущий", currency: "RUB" });
+
+  const clientAccounts = active
+    ? accounts.filter(a => active.name.split(" ").some(w => a.owner.includes(w)))
+    : [];
+
+  const handleOpClick = (modal: OpModal) => {
+    if (!modal) return;
+    if ((modal === "cash" || modal === "credit") && clientAccounts.length === 0) {
+      setPendingModal(modal);
+      setOpModal("new-account");
+      return;
+    }
+    setOpDone(false);
+    setOpModal(modal);
+  };
+
+  const handleAccountCreated = () => {
+    const today = new Date().toLocaleDateString("ru-RU");
+    const newAcc: Account = {
+      id: `40817810****${Math.floor(Math.random() * 9000 + 1000)}`,
+      owner: active ? active.name.split(" ").slice(0, 2).join(" ") : accForm.owner,
+      type: accForm.type,
+      currency: accForm.currency,
+      balance: 0,
+      opened: today,
+      status: "active",
+    };
+    onAddAccount(newAcc);
+    setOpDone(true);
+    setTimeout(() => {
+      setOpDone(false);
+      if (pendingModal) {
+        setOpModal(pendingModal);
+        setPendingModal(null);
+      } else {
+        setOpModal(null);
+      }
+      setAccForm({ owner: "", type: "Текущий", currency: "RUB" });
+    }, 1500);
+  };
 
   const handleTakeNext = () => {
     const waiting = queue.filter(q => q.status === "waiting");
@@ -1045,8 +1097,202 @@ const Queue = () => {
 
   const ops = active ? (SERVICE_OPS[active.service] || SERVICE_OPS["Консультация"]) : [];
 
+  const isOut = active?.service === "Выдача наличных";
+
+  const SuccessBanner = ({ text }: { text: string }) => (
+    <div className="flex flex-col items-center py-6 gap-3">
+      <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "hsl(142 70% 45% / 0.15)", border: "2px solid hsl(142 70% 45% / 0.4)" }}>
+        <Icon name="CheckCircle2" size={28} className="text-green-400" />
+      </div>
+      <p className="text-sm font-medium text-white">{text}</p>
+    </div>
+  );
+
   return (
     <div className="space-y-5 animate-fade-in">
+
+      {/* ── Модал: Наличные (выдача/взнос) ── */}
+      {opModal === "cash" && (
+        <Modal title={isOut ? "Выдача наличных" : "Взнос наличных"} onClose={() => setOpModal(null)}>
+          {opDone ? <SuccessBanner text={isOut ? "Наличные выданы!" : "Взнос принят!"} /> : (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg flex items-center gap-3" style={{ background: "hsl(185 100% 50% / 0.06)", border: "1px solid hsl(185 100% 50% / 0.15)" }}>
+                <Icon name="User" size={16} className="text-cyan-400 shrink-0" />
+                <span className="text-sm text-white font-medium">{active?.name}</span>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Сумма (₽) *</label>
+                <input className="input-bank font-mono text-xl text-center" type="number" placeholder="0"
+                  value={cashForm.amount} onChange={e => setCashForm(f => ({ ...f, amount: e.target.value }))} />
+                <div className="grid grid-cols-4 gap-1.5 mt-2">
+                  {[1000, 5000, 10000, 50000].map(v => (
+                    <button key={v} className="btn-outline text-xs py-1" onClick={() => setCashForm(f => ({ ...f, amount: String(v) }))}>
+                      {(v / 1000).toFixed(0)}К
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Счёт клиента *</label>
+                {clientAccounts.length > 0 ? (
+                  <select className="input-bank font-mono" value={cashForm.account} onChange={e => setCashForm(f => ({ ...f, account: e.target.value }))}>
+                    <option value="">— Выберите счёт —</option>
+                    {clientAccounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.id} · {a.type} · {formatMoney(a.balance)}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="p-3 rounded-lg" style={{ background: "hsl(38 92% 50% / 0.08)", border: "1px solid hsl(38 92% 50% / 0.25)" }}>
+                    <p className="text-xs mb-2" style={{ color: "hsl(38 92% 65%)" }}>У клиента нет счёта в системе</p>
+                    <button className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5" onClick={() => { setPendingModal("cash"); setOpModal("new-account"); }}>
+                      <Icon name="Plus" size={12} /> Создать счёт
+                    </button>
+                  </div>
+                )}
+              </div>
+              <button className="btn-primary w-full flex items-center justify-center gap-2"
+                disabled={!cashForm.amount || !cashForm.account}
+                onClick={() => { setOpDone(true); setDoneOps(d => [...d, isOut ? "Выдать наличные" : "Принять наличные"]); setTimeout(() => { setOpModal(null); setOpDone(false); setCashForm({ amount: "", account: "" }); }, 1200); }}>
+                <Icon name={isOut ? "ArrowUpFromLine" : "ArrowDownToLine"} size={14} />
+                {isOut ? "Выдать" : "Принять"} {cashForm.amount ? formatMoney(Number(cashForm.amount)) : ""}
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* ── Модал: Выпуск карты ── */}
+      {opModal === "card" && (
+        <Modal title="Выпуск карты" onClose={() => setOpModal(null)}>
+          {opDone ? <SuccessBanner text="Карта оформлена!" /> : (
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg flex items-center gap-3" style={{ background: "hsl(185 100% 50% / 0.06)", border: "1px solid hsl(185 100% 50% / 0.15)" }}>
+                <Icon name="User" size={16} className="text-cyan-400 shrink-0" />
+                <span className="text-sm text-white font-medium">{active?.name}</span>
+              </div>
+              {[
+                { label: "ФИО клиента *", key: "fio", placeholder: "Иванов Иван Иванович" },
+                { label: "Серия и номер паспорта *", key: "passport", placeholder: "4500 123456", mono: true },
+                { label: "Номер телефона *", key: "phone", placeholder: "+7 900 000-00-00", mono: true },
+                { label: "Номер выдаваемой карты *", key: "cardNum", placeholder: "4276 **** **** ****", mono: true },
+                { label: "Срок действия *", key: "expiry", placeholder: "MM/YY", mono: true },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>{f.label}</label>
+                  <input className={`input-bank ${f.mono ? "font-mono tracking-wider" : ""}`} placeholder={f.placeholder}
+                    value={(cardForm as any)[f.key]} onChange={e => setCardForm(cf => ({ ...cf, [f.key]: e.target.value }))} />
+                </div>
+              ))}
+              <button className="btn-primary w-full flex items-center justify-center gap-2 mt-1"
+                disabled={!cardForm.fio || !cardForm.passport || !cardForm.cardNum}
+                onClick={() => { setOpDone(true); setDoneOps(d => [...d, "Выдать карту"]); setTimeout(() => { setOpModal(null); setOpDone(false); setCardForm({ fio: "", passport: "", phone: "", cardNum: "", expiry: "" }); }, 1200); }}>
+                <Icon name="CreditCard" size={14} />
+                Оформить карту
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* ── Модал: Кредит/Рассрочка ── */}
+      {opModal === "credit" && (
+        <Modal title="Оформление кредита / рассрочки" onClose={() => setOpModal(null)}>
+          {opDone ? <SuccessBanner text="Заявка на кредит принята!" /> : (
+            <div className="space-y-3">
+              <div className="p-3 rounded-lg flex items-center gap-3" style={{ background: "hsl(185 100% 50% / 0.06)", border: "1px solid hsl(185 100% 50% / 0.15)" }}>
+                <Icon name="User" size={16} className="text-cyan-400 shrink-0" />
+                <span className="text-sm text-white font-medium">{active?.name}</span>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>ФИО клиента *</label>
+                <input className="input-bank" placeholder="Иванов Иван Иванович"
+                  value={creditForm.fio} onChange={e => setCreditForm(f => ({ ...f, fio: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Серия и номер паспорта *</label>
+                <input className="input-bank font-mono tracking-wider" placeholder="4500 123456"
+                  value={creditForm.passport} onChange={e => setCreditForm(f => ({ ...f, passport: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Счёт / карта для зачисления *</label>
+                {clientAccounts.length > 0 ? (
+                  <select className="input-bank font-mono" value={creditForm.account} onChange={e => setCreditForm(f => ({ ...f, account: e.target.value }))}>
+                    <option value="">— Выберите счёт —</option>
+                    {clientAccounts.map(a => (
+                      <option key={a.id} value={a.id}>{a.id} · {a.type}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="p-3 rounded-lg" style={{ background: "hsl(38 92% 50% / 0.08)", border: "1px solid hsl(38 92% 50% / 0.25)" }}>
+                    <p className="text-xs mb-2" style={{ color: "hsl(38 92% 65%)" }}>У клиента нет счёта — необходимо создать</p>
+                    <button className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5" onClick={() => { setPendingModal("credit"); setOpModal("new-account"); }}>
+                      <Icon name="Plus" size={12} /> Создать счёт
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Срок кредита</label>
+                <select className="input-bank" value={creditForm.months} onChange={e => setCreditForm(f => ({ ...f, months: e.target.value }))}>
+                  {["3","6","12","24","36","48","60"].map(m => <option key={m} value={m}>{m} месяцев</option>)}
+                </select>
+              </div>
+              <button className="btn-primary w-full flex items-center justify-center gap-2 mt-1"
+                disabled={!creditForm.fio || !creditForm.passport || !creditForm.account}
+                onClick={() => { setOpDone(true); setDoneOps(d => [...d, "Оформить кредит"]); setTimeout(() => { setOpModal(null); setOpDone(false); setCreditForm({ fio: "", passport: "", account: "", months: "12" }); }, 1200); }}>
+                <Icon name="FileText" size={14} />
+                Отправить заявку
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      {/* ── Модал: Создание счёта ── */}
+      {opModal === "new-account" && (
+        <Modal title="Открытие нового счёта" onClose={() => { setOpModal(null); setPendingModal(null); }}>
+          {opDone ? (
+            <div className="flex flex-col items-center py-6 gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "hsl(142 70% 45% / 0.15)", border: "2px solid hsl(142 70% 45% / 0.4)" }}>
+                <Icon name="CheckCircle2" size={28} className="text-green-400" />
+              </div>
+              <p className="text-sm font-medium text-white">Счёт создан!</p>
+              {pendingModal && <p className="text-xs" style={{ color: "hsl(215 20% 50%)" }}>Возвращаемся к операции...</p>}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pendingModal && (
+                <div className="p-3 rounded-lg flex items-center gap-2" style={{ background: "hsl(185 100% 50% / 0.06)", border: "1px solid hsl(185 100% 50% / 0.15)" }}>
+                  <Icon name="Info" size={14} className="text-cyan-400 shrink-0" />
+                  <span className="text-xs" style={{ color: "hsl(215 20% 65%)" }}>После создания счёта вы вернётесь к операции клиента</span>
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Владелец</label>
+                <input className="input-bank" placeholder="ФИО или наименование"
+                  value={accForm.owner || active?.name || ""} onChange={e => setAccForm(f => ({ ...f, owner: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Тип счёта</label>
+                <select className="input-bank" value={accForm.type} onChange={e => setAccForm(f => ({ ...f, type: e.target.value }))}>
+                  {["Текущий", "Сберегательный", "Расчётный", "Кредитный", "Депозитный"].map(t => <option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Валюта</label>
+                <select className="input-bank" value={accForm.currency} onChange={e => setAccForm(f => ({ ...f, currency: e.target.value }))}>
+                  {["RUB", "USD", "EUR", "CNY"].map(c => <option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <button className="btn-primary w-full flex items-center justify-center gap-2 mt-1" onClick={handleAccountCreated}>
+                <Icon name="BookOpen" size={14} />
+                Открыть счёт
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold text-white">Электронная очередь</h2>
         <button className="btn-primary flex items-center gap-2 text-sm" onClick={handleTakeNext} disabled={queue.filter(q => q.status === "waiting").length === 0}>
@@ -1103,12 +1349,17 @@ const Queue = () => {
               const isDone = doneOps.includes(op.label);
               return (
                 <button key={op.label}
-                  onClick={() => setDoneOps(d => d.includes(op.label) ? d.filter(x => x !== op.label) : [...d, op.label])}
-                  className="p-4 rounded-xl text-left transition-all duration-200 relative overflow-hidden"
+                  onClick={() => op.modal ? handleOpClick(op.modal) : setDoneOps(d => d.includes(op.label) ? d.filter(x => x !== op.label) : [...d, op.label])}
+                  className="p-4 rounded-xl text-left transition-all duration-200 relative overflow-hidden group"
                   style={{ background: isDone ? `${op.color}14` : "hsl(220 15% 9%)", border: `1px solid ${isDone ? op.color + "50" : "hsl(220 15% 16%)"}` }}>
                   {isDone && (
                     <div className="absolute top-2 right-2">
                       <Icon name="CheckCircle2" size={14} className="text-green-400" />
+                    </div>
+                  )}
+                  {op.modal && !isDone && (
+                    <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Icon name="ChevronRight" size={13} style={{ color: op.color }} />
                     </div>
                   )}
                   <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3" style={{ background: `${op.color}18` }}>
@@ -1116,6 +1367,7 @@ const Queue = () => {
                   </div>
                   <div className="text-sm font-medium text-white mb-1">{op.label}</div>
                   <div className="text-xs leading-relaxed" style={{ color: "hsl(215 20% 48%)" }}>{op.desc}</div>
+                  {op.modal && <div className="text-xs mt-2 font-medium" style={{ color: op.color }}>Открыть форму →</div>}
                 </button>
               );
             })}
@@ -1426,7 +1678,7 @@ export default function Index() {
       case "analytics": return <Analytics />;
       case "clients": return <Clients clients={clients} onAdd={c => setClients(prev => [...prev, c])} />;
       case "credit": return <Credit />;
-      case "queue": return <Queue />;
+      case "queue": return <Queue accounts={accounts} onAddAccount={a => setAccounts(prev => [...prev, a])} />;
       case "terminal": return <Terminal />;
       case "accounts": return <Accounts accounts={accounts} clients={clients} onAdd={a => setAccounts(prev => [...prev, a])} />;
       default: return <Dashboard user={user} />;
