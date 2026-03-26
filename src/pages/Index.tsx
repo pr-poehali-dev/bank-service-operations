@@ -35,7 +35,7 @@ const MOCK_TRANSACTIONS = [
   { id: "TXN-00415", type: "cash-out", amount: 30000, client: "Морозов С.Т.", account: "40817810****6789", date: "25.03.2026 12:05", status: "error", operator: "Петрова М.С." },
 ];
 
-const MOCK_CLIENTS = [
+const INIT_CLIENTS = [
   { id: "CLT-001", name: "Иванов Алексей Викторович", phone: "+7 900 123-45-67", account: "40817810****1234", balance: 1250000, status: "vip", credit: true },
   { id: "CLT-002", name: "Смирнова Екатерина Константиновна", phone: "+7 911 234-56-78", account: "40817810****5678", balance: 87500, status: "active", credit: false },
   { id: "CLT-003", name: "ООО «Техпром»", phone: "+7 495 987-65-43", account: "40702810****9012", balance: 5620000, status: "corporate", credit: false },
@@ -51,13 +51,16 @@ const MOCK_QUEUE = [
   { ticket: "А-004", name: "Соловьёва Ирина", service: "Кредит", wait: "25 мин", status: "waiting" },
 ];
 
-const MOCK_ACCOUNTS = [
+const INIT_ACCOUNTS = [
   { id: "40817810****1234", owner: "Иванов А.В.", type: "Текущий", currency: "RUB", balance: 1250000, opened: "12.01.2021", status: "active" },
   { id: "40817810****5678", owner: "Смирнова Е.К.", type: "Сберегательный", currency: "RUB", balance: 87500, opened: "08.06.2022", status: "active" },
   { id: "40702810****9012", owner: "ООО «Техпром»", type: "Расчётный", currency: "RUB", balance: 5620000, opened: "03.03.2019", status: "active" },
   { id: "40817810****3456", owner: "Новиков П.И.", type: "Текущий", currency: "RUB", balance: 325000, opened: "22.11.2023", status: "active" },
   { id: "42301810****7890", owner: "Федорова О.Л.", type: "Кредитный", currency: "RUB", balance: -120000, opened: "15.07.2024", status: "credit" },
 ];
+
+type Client = typeof INIT_CLIENTS[0];
+type Account = typeof INIT_ACCOUNTS[0];
 
 // ─── Helper Components ────────────────────────────────────────────────────────
 const TxTypeBadge = ({ type }: { type: string }) => {
@@ -744,21 +747,103 @@ const Analytics = () => {
   );
 };
 
+// ─── Modal ────────────────────────────────────────────────────────────────────
+const Modal = ({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }}>
+    <div className="w-full max-w-md mx-4 bank-card animate-scale-in" style={{ border: "1px solid hsl(185 100% 50% / 0.25)" }}>
+      <div className="flex items-center justify-between mb-5">
+        <div className="section-title">{title}</div>
+        <button onClick={onClose} className="w-7 h-7 rounded-lg flex items-center justify-center transition-colors" style={{ background: "hsl(220 15% 12%)" }}>
+          <Icon name="X" size={14} style={{ color: "hsl(215 20% 55%)" }} />
+        </button>
+      </div>
+      {children}
+    </div>
+  </div>
+);
+
 // ─── Clients ──────────────────────────────────────────────────────────────────
-const Clients = () => {
+const Clients = ({ clients, onAdd }: { clients: Client[]; onAdd: (c: Client) => void }) => {
   const [search, setSearch] = useState("");
-  const filtered = MOCK_CLIENTS.filter(c => c.name.toLowerCase().includes(search.toLowerCase()) || c.account.includes(search));
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ name: "", phone: "", account: "", balance: "", status: "active", credit: false });
+  const [saved, setSaved] = useState(false);
+
+  const filtered = clients.filter(c =>
+    c.name.toLowerCase().includes(search.toLowerCase()) || c.account.includes(search)
+  );
+
+  const handleSave = () => {
+    if (!form.name || !form.phone) return;
+    const newId = `CLT-${String(clients.length + 1).padStart(3, "0")}`;
+    const acc = form.account || `408178****${String(Math.floor(Math.random() * 9000 + 1000))}`;
+    onAdd({ id: newId, name: form.name, phone: form.phone, account: acc, balance: Number(form.balance) || 0, status: form.status, credit: form.credit });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); setShowModal(false); setForm({ name: "", phone: "", account: "", balance: "", status: "active", credit: false }); }, 1000);
+  };
 
   return (
     <div className="space-y-5 animate-fade-in">
+      {showModal && (
+        <Modal title="Новый клиент" onClose={() => setShowModal(false)}>
+          {saved ? (
+            <div className="flex flex-col items-center py-6 gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "hsl(142 70% 45% / 0.15)", border: "2px solid hsl(142 70% 45% / 0.4)" }}>
+                <Icon name="CheckCircle2" size={28} className="text-green-400" />
+              </div>
+              <p className="text-sm font-medium text-white">Клиент добавлен!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>ФИО / Наименование *</label>
+                <input className="input-bank" placeholder="Иванов Иван Иванович" value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Телефон *</label>
+                <input className="input-bank" placeholder="+7 900 000-00-00" value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Номер счёта (или оставьте пустым)</label>
+                <input className="input-bank font-mono" placeholder="40817810****XXXX" value={form.account} onChange={e => setForm(f => ({ ...f, account: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Начальный баланс (₽)</label>
+                <input className="input-bank" placeholder="0" type="number" value={form.balance} onChange={e => setForm(f => ({ ...f, balance: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Статус</label>
+                <select className="input-bank" value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value }))}>
+                  <option value="active">Активный</option>
+                  <option value="vip">VIP</option>
+                  <option value="corporate">Корпоративный</option>
+                </select>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer py-1">
+                <input type="checkbox" checked={form.credit} onChange={e => setForm(f => ({ ...f, credit: e.target.checked }))} className="accent-cyan-400 w-4 h-4" />
+                <span className="text-sm" style={{ color: "hsl(215 20% 65%)" }}>Есть активный кредит</span>
+              </label>
+              <button className="btn-primary w-full mt-1" onClick={handleSave} disabled={!form.name || !form.phone}>
+                Сохранить клиента
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Клиентская база</h2>
-        <button className="btn-primary flex items-center gap-2 text-sm">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Клиентская база</h2>
+          <p className="text-xs mt-0.5" style={{ color: "hsl(215 20% 45%)" }}>{clients.length} клиентов</p>
+        </div>
+        <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => setShowModal(true)}>
           <Icon name="UserPlus" size={14} />
           Новый клиент
         </button>
       </div>
+
       <input className="input-bank max-w-sm" placeholder="Поиск по ФИО / счёту..." value={search} onChange={e => setSearch(e.target.value)} />
+
       <div className="bank-card p-0 overflow-hidden">
         <table className="w-full">
           <thead>
@@ -769,6 +854,9 @@ const Clients = () => {
             </tr>
           </thead>
           <tbody>
+            {filtered.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(215 20% 40%)" }}>Клиенты не найдены</td></tr>
+            )}
             {filtered.map(c => (
               <tr key={c.id} className="table-row-bank cursor-pointer">
                 <td className="px-4 py-3 font-mono text-xs" style={{ color: "hsl(215 20% 50%)" }}>{c.id}</td>
@@ -1038,65 +1126,154 @@ const Terminal = () => {
 };
 
 // ─── Accounts ────────────────────────────────────────────────────────────────
-const Accounts = () => (
-  <div className="space-y-5 animate-fade-in">
-    <div className="flex items-center justify-between">
-      <h2 className="text-xl font-semibold text-white">Учёт счетов</h2>
-      <button className="btn-primary flex items-center gap-2 text-sm">
-        <Icon name="Plus" size={14} />
-        Открыть счёт
-      </button>
-    </div>
+const Accounts = ({ accounts, clients, onAdd }: { accounts: Account[]; clients: Client[]; onAdd: (a: Account) => void }) => {
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState({ owner: "", type: "Текущий", currency: "RUB", balance: "", status: "active" });
+  const [saved, setSaved] = useState(false);
 
-    <div className="grid grid-cols-3 gap-4">
-      {[
-        { label: "Активных счетов", value: "3 842", icon: "BookOpen" },
-        { label: "Общий остаток", value: "₽ 2.1B", icon: "DollarSign" },
-        { label: "Новых за месяц", value: "47", icon: "TrendingUp" },
-      ].map(s => (
-        <div key={s.label} className="bank-card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "hsl(185 100% 50% / 0.1)" }}>
-            <Icon name={s.icon as any} size={18} className="text-cyan-400" />
-          </div>
-          <div>
-            <div className="stat-value text-xl">{s.value}</div>
-            <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{s.label}</div>
-          </div>
+  const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+
+  const generateAccountNum = () => {
+    const prefixes: Record<string, string> = { "Текущий": "40817810", "Сберегательный": "40817810", "Расчётный": "40702810", "Кредитный": "42301810" };
+    const pref = prefixes[form.type] || "40817810";
+    return `${pref}****${String(Math.floor(Math.random() * 9000 + 1000))}`;
+  };
+
+  const handleSave = () => {
+    if (!form.owner) return;
+    const today = new Date().toLocaleDateString("ru-RU");
+    onAdd({ id: generateAccountNum(), owner: form.owner, type: form.type, currency: form.currency, balance: Number(form.balance) || 0, opened: today, status: form.status });
+    setSaved(true);
+    setTimeout(() => { setSaved(false); setShowModal(false); setForm({ owner: "", type: "Текущий", currency: "RUB", balance: "", status: "active" }); }, 1000);
+  };
+
+  return (
+    <div className="space-y-5 animate-fade-in">
+      {showModal && (
+        <Modal title="Открыть новый счёт" onClose={() => setShowModal(false)}>
+          {saved ? (
+            <div className="flex flex-col items-center py-6 gap-3">
+              <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ background: "hsl(142 70% 45% / 0.15)", border: "2px solid hsl(142 70% 45% / 0.4)" }}>
+                <Icon name="CheckCircle2" size={28} className="text-green-400" />
+              </div>
+              <p className="text-sm font-medium text-white">Счёт открыт!</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Владелец счёта *</label>
+                <select className="input-bank" value={form.owner} onChange={e => setForm(f => ({ ...f, owner: e.target.value }))}>
+                  <option value="">— Выберите клиента —</option>
+                  {clients.map(c => <option key={c.id} value={c.name.split(" ").slice(0, 2).join(" ")}>{c.name}</option>)}
+                  <option value="(другой)">(Ввести вручную)</option>
+                </select>
+              </div>
+              {form.owner === "(другой)" && (
+                <div>
+                  <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>ФИО / Наименование</label>
+                  <input className="input-bank" placeholder="Иванов И.И." onChange={e => setForm(f => ({ ...f, owner: e.target.value }))} />
+                </div>
+              )}
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Тип счёта</label>
+                <select className="input-bank" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
+                  <option>Текущий</option>
+                  <option>Сберегательный</option>
+                  <option>Расчётный</option>
+                  <option>Кредитный</option>
+                  <option>Депозитный</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Валюта</label>
+                <select className="input-bank" value={form.currency} onChange={e => setForm(f => ({ ...f, currency: e.target.value }))}>
+                  <option>RUB</option>
+                  <option>USD</option>
+                  <option>EUR</option>
+                  <option>CNY</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1" style={{ color: "hsl(215 20% 55%)" }}>Начальный остаток (₽)</label>
+                <input className="input-bank" placeholder="0" type="number" value={form.balance} onChange={e => setForm(f => ({ ...f, balance: e.target.value }))} />
+              </div>
+              <div className="p-3 rounded-lg" style={{ background: "hsl(185 100% 50% / 0.05)", border: "1px solid hsl(185 100% 50% / 0.15)" }}>
+                <p className="text-xs" style={{ color: "hsl(215 20% 55%)" }}>Номер счёта будет сгенерирован автоматически при сохранении.</p>
+              </div>
+              <button className="btn-primary w-full mt-1" onClick={handleSave} disabled={!form.owner || form.owner === "(другой)"}>
+                Открыть счёт
+              </button>
+            </div>
+          )}
+        </Modal>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-white">Учёт счетов</h2>
+          <p className="text-xs mt-0.5" style={{ color: "hsl(215 20% 45%)" }}>{accounts.length} счетов</p>
         </div>
-      ))}
-    </div>
+        <button className="btn-primary flex items-center gap-2 text-sm" onClick={() => setShowModal(true)}>
+          <Icon name="Plus" size={14} />
+          Открыть счёт
+        </button>
+      </div>
 
-    <div className="bank-card p-0 overflow-hidden">
-      <table className="w-full">
-        <thead>
-          <tr style={{ background: "hsl(220 15% 8%)", borderBottom: "1px solid hsl(220 15% 14%)" }}>
-            {["Номер счёта", "Владелец", "Тип", "Валюта", "Остаток", "Открыт", "Статус"].map(h => (
-              <th key={h} className="text-left px-4 py-3 text-xs font-medium" style={{ color: "hsl(215 20% 45%)" }}>{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {MOCK_ACCOUNTS.map(a => (
-            <tr key={a.id} className="table-row-bank cursor-pointer">
-              <td className="px-4 py-3 font-mono text-xs text-white">{a.id}</td>
-              <td className="px-4 py-3 text-sm font-medium text-white">{a.owner}</td>
-              <td className="px-4 py-3 text-xs" style={{ color: "hsl(215 20% 55%)" }}>{a.type}</td>
-              <td className="px-4 py-3 font-mono text-xs" style={{ color: "hsl(215 20% 50%)" }}>{a.currency}</td>
-              <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: a.balance < 0 ? "hsl(0 84% 65%)" : "hsl(185 100% 50%)" }}>{formatMoney(a.balance)}</td>
-              <td className="px-4 py-3 text-xs" style={{ color: "hsl(215 20% 50%)" }}>{a.opened}</td>
-              <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Всего счетов", value: accounts.length, icon: "BookOpen" },
+          { label: "Общий остаток", value: formatMoney(totalBalance), icon: "DollarSign" },
+          { label: "Активных", value: accounts.filter(a => a.status === "active").length, icon: "TrendingUp" },
+        ].map(s => (
+          <div key={s.label} className="bank-card flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: "hsl(185 100% 50% / 0.1)" }}>
+              <Icon name={s.icon as any} size={18} className="text-cyan-400" />
+            </div>
+            <div>
+              <div className="stat-value text-xl">{s.value}</div>
+              <div className="text-xs" style={{ color: "hsl(215 20% 45%)" }}>{s.label}</div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bank-card p-0 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr style={{ background: "hsl(220 15% 8%)", borderBottom: "1px solid hsl(220 15% 14%)" }}>
+              {["Номер счёта", "Владелец", "Тип", "Валюта", "Остаток", "Открыт", "Статус"].map(h => (
+                <th key={h} className="text-left px-4 py-3 text-xs font-medium" style={{ color: "hsl(215 20% 45%)" }}>{h}</th>
+              ))}
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {accounts.length === 0 && (
+              <tr><td colSpan={7} className="px-4 py-8 text-center text-sm" style={{ color: "hsl(215 20% 40%)" }}>Счета не найдены</td></tr>
+            )}
+            {accounts.map(a => (
+              <tr key={a.id} className="table-row-bank cursor-pointer">
+                <td className="px-4 py-3 font-mono text-xs text-white">{a.id}</td>
+                <td className="px-4 py-3 text-sm font-medium text-white">{a.owner}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: "hsl(215 20% 55%)" }}>{a.type}</td>
+                <td className="px-4 py-3 font-mono text-xs" style={{ color: "hsl(215 20% 50%)" }}>{a.currency}</td>
+                <td className="px-4 py-3 font-mono text-sm font-medium" style={{ color: a.balance < 0 ? "hsl(0 84% 65%)" : "hsl(185 100% 50%)" }}>{formatMoney(a.balance)}</td>
+                <td className="px-4 py-3 text-xs" style={{ color: "hsl(215 20% 50%)" }}>{a.opened}</td>
+                <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 export default function Index() {
   const [user, setUser] = useState<User | null>(null);
   const [section, setSection] = useState<Section>("dashboard");
+  const [clients, setClients] = useState<Client[]>(INIT_CLIENTS);
+  const [accounts, setAccounts] = useState<Account[]>(INIT_ACCOUNTS);
 
   if (!user) return <AuthScreen onLogin={setUser} />;
 
@@ -1107,11 +1284,11 @@ export default function Index() {
       case "cash-in": return <CashOperationForm type="in" userRole={user.role} />;
       case "history": return <History />;
       case "analytics": return <Analytics />;
-      case "clients": return <Clients />;
+      case "clients": return <Clients clients={clients} onAdd={c => setClients(prev => [...prev, c])} />;
       case "credit": return <Credit />;
       case "queue": return <Queue />;
       case "terminal": return <Terminal />;
-      case "accounts": return <Accounts />;
+      case "accounts": return <Accounts accounts={accounts} clients={clients} onAdd={a => setAccounts(prev => [...prev, a])} />;
       default: return <Dashboard user={user} />;
     }
   };
