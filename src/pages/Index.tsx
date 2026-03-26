@@ -97,7 +97,22 @@ const AuthScreen = ({ onLogin }: { onLogin: (u: User) => void }) => {
   const [code, setCode] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const EMPLOYEES: Record<string, { password: string; user: User }> = {
+    "EMP-0042": { password: "petrov2024", user: { name: "Петрова Мария Сергеевна", role: "employee", id: "EMP-0042", department: "Кассовые операции" } },
+    "TIMA34":   { password: "2014",       user: { name: "Тимофеев Артём", role: "employee", id: "TIMA34", department: "Старший операционист" } },
+  };
+
+  const [loginError, setLoginError] = useState("");
+
   const handleLogin = () => {
+    if (role === "employee") {
+      const found = EMPLOYEES[login.trim()];
+      if (!found || found.password !== pass) {
+        setLoginError("Неверный логин или пароль");
+        return;
+      }
+    }
+    setLoginError("");
     setLoading(true);
     setTimeout(() => { setLoading(false); setStep("2fa"); }, 1200);
   };
@@ -106,11 +121,11 @@ const AuthScreen = ({ onLogin }: { onLogin: (u: User) => void }) => {
     setLoading(true);
     setTimeout(() => {
       setLoading(false);
-      onLogin(
-        role === "employee"
-          ? { name: "Петрова Мария Сергеевна", role: "employee", id: "EMP-0042", department: "Кассовые операции" }
-          : { name: "Иванов Алексей Викторович", role: "client", id: "CLT-001", balance: 1250000 }
-      );
+      if (role === "employee") {
+        onLogin(EMPLOYEES[login.trim()].user);
+      } else {
+        onLogin({ name: "Иванов Алексей Викторович", role: "client", id: "CLT-001", balance: 1250000 });
+      }
     }, 1000);
   };
 
@@ -160,6 +175,12 @@ const AuthScreen = ({ onLogin }: { onLogin: (u: User) => void }) => {
                   <label className="text-xs font-medium block mb-1.5" style={{ color: "hsl(215 20% 55%)" }}>Пароль</label>
                   <input type="password" className="input-bank" placeholder="••••••••" value={pass} onChange={e => setPass(e.target.value)} />
                 </div>
+                {loginError && (
+                  <div className="flex items-center gap-2 p-2.5 rounded-lg" style={{ background: "hsl(0 84% 60% / 0.1)", border: "1px solid hsl(0 84% 60% / 0.3)" }}>
+                    <Icon name="AlertCircle" size={14} className="text-red-400 shrink-0" />
+                    <span className="text-xs" style={{ color: "hsl(0 84% 70%)" }}>{loginError}</span>
+                  </div>
+                )}
                 <button className="btn-primary w-full flex items-center justify-center gap-2 mt-2" onClick={handleLogin} disabled={loading}>
                   {loading ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="LogIn" size={16} />}
                   {loading ? "Проверка..." : "Войти"}
